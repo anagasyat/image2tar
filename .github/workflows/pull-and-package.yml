@@ -1,0 +1,54 @@
+name: Pull Docker Image & Package to Tar
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # 每周日自动更新
+
+jobs:
+  package-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Docker version
+        run: docker --version
+
+      - name: Login to DockerHub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Pull target Docker image
+        run: |
+          # 从密钥动态获取镜像完整地址（用户名/镜像名）
+          TARGET_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGENAME }}:latest"
+          echo "拉取镜像: $TARGET_IMAGE"
+          docker pull $TARGET_IMAGE
+          docker images | grep ${{ secrets.DOCKER_IMAGENAME }}
+
+      - name: Package image to tar file
+        run: |
+          TARGET_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGENAME }}:latest"
+          TAR_FILENAME="${{ secrets.DOCKER_IMAGENAME }}_$(date +%Y%m%d).tar"
+          docker save -o $TAR_FILENAME $TARGET_IMAGE
+          ls -lh $TAR_FILENAME
+          echo "TAR_FILENAME=$TAR_FILENAME" >> $GITHUB_ENV
+
+      - name: Upload tar to Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ secrets.DOCKER_IMAGENAME }}-image-tar
+          path: ${{ env.TAR_FILENAME }}
+          retention-days: 90
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: image-${{ env.TAR_FILENAME }}
+          name: ${{ secrets.DOCKER_IMAGENAME }} Image ${{ env.TAR_FILENAME }}
+          files: ${{ env.TAR_FILENAME }}
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
