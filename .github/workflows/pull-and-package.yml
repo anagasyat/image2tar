@@ -3,7 +3,7 @@ name: Pull Docker Image & Package to Tar
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 0'  # 每周日自动更新
+    - cron: '0 0 * * 0'  # 每周日自动更新（可选）
 
 jobs:
   package-image:
@@ -12,20 +12,22 @@ jobs:
       - name: Check Docker version
         run: docker --version
 
+      # 登录DockerHub（私有镜像需此步骤，公开镜像可删除）
       - name: Login to DockerHub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
+      # 拉取镜像
       - name: Pull target Docker image
         run: |
-          # 从密钥动态获取镜像完整地址（用户名/镜像名）
           TARGET_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGENAME }}:latest"
           echo "拉取镜像: $TARGET_IMAGE"
           docker pull $TARGET_IMAGE
           docker images | grep ${{ secrets.DOCKER_IMAGENAME }}
 
+      # 打包为tar文件
       - name: Package image to tar file
         run: |
           TARGET_IMAGE="${{ secrets.DOCKER_USERNAME }}/${{ secrets.DOCKER_IMAGENAME }}:latest"
@@ -34,21 +36,10 @@ jobs:
           ls -lh $TAR_FILENAME
           echo "TAR_FILENAME=$TAR_FILENAME" >> $GITHUB_ENV
 
-      - name: Upload tar to Artifact
+      # 仅保留Artifact下载（权限足够，无403问题）
+      - name: Upload tar to Artifact（网页直接下载）
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ secrets.DOCKER_IMAGENAME }}-image-tar
+          name: ${{ secrets.DOCKER_IMAGENAME }}-image-tar  # 下载时显示的名称
           path: ${{ env.TAR_FILENAME }}
-          retention-days: 90
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: image-${{ env.TAR_FILENAME }}
-          name: ${{ secrets.DOCKER_IMAGENAME }} Image ${{ env.TAR_FILENAME }}
-          files: ${{ env.TAR_FILENAME }}
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
+          retention-days: 90  # 保留90天，可调整
